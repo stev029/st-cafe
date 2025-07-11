@@ -7,6 +7,7 @@ type Column<T> = {
   header: string;
   accessor: keyof T;
   render?: (value: T[keyof T], row: T) => React.ReactNode;
+  template?: React.ReactNode;
   disabled?: boolean;
 };
 
@@ -19,6 +20,7 @@ type TableProps<T> = {
   onAddItem?: () => void;
   addButtonLabel?: string;
   onSubmit?: ((newItem: T) => void) | ((newItem: T) => Promise<void>);
+  action?: (formData: FormData) => Promise<void> | void
 };
 
 export default function TableComponent<T extends { [key: string]: unknown }>(props: TableProps<T>) {
@@ -29,13 +31,19 @@ export default function TableComponent<T extends { [key: string]: unknown }>(pro
     searchPlaceholder = "Cari...",
     addButton = false,
     addButtonLabel = "Tambah Data",
-    onSubmit
+    onSubmit,
+    action
   } = props;
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [showAddItemForm, setShowAddItemForm] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [editItem, setEditItem] = useState<T | null>(null);
+
+  const resolveNestedValue = (row: T, accessor: keyof T): unknown => {
+    const keys = String(accessor).split(".");
+    return keys.reduce((acc, key) => (acc && (acc as any)[key] ? (acc as any)[key] : undefined), row);
+  };
 
   const handleAddItem = onSubmit || ((newItem: T) => {
     data.push(newItem);
@@ -46,14 +54,6 @@ export default function TableComponent<T extends { [key: string]: unknown }>(pro
   const handleEditItem = (item: T, idx: number) => {
     setEditIndex(idx);
     setEditItem(item);
-  };
-
-  const handleEditSubmit = (updated: T) => {
-    if (editIndex !== null) {
-      data[editIndex] = updated;
-      setEditIndex(null);
-      setEditItem(null);
-    }
   };
 
   const handleDeleteItem = (idx: number) => {
@@ -132,7 +132,9 @@ export default function TableComponent<T extends { [key: string]: unknown }>(pro
                 <tr key={i} className="border-b last:border-0">
                   {columns.map((col) => (
                     <td key={String(col.accessor)} className="py-2 px-4">
-                      {col.render ? col.render(row[col.accessor], row) : (row[col.accessor] as React.ReactNode)}
+                      {col.render
+                        ? col.render(resolveNestedValue(row, col.accessor) as T[keyof T], row)
+                        : resolveNestedValue(row, col.accessor) as React.ReactNode}
                     </td>
                   ))}
                   <td className="py-2 px-4 flex gap-2">
@@ -180,7 +182,8 @@ export default function TableComponent<T extends { [key: string]: unknown }>(pro
 
         <AddItemForm
           columns={columns}
-          onSubmit={onSubmit || handleAddItem}
+          onSubmit={onSubmit}
+          action={action}
           onClose={() => setShowAddItemForm(false)}
           title="Tambah Item"
         />
@@ -190,7 +193,8 @@ export default function TableComponent<T extends { [key: string]: unknown }>(pro
         <AddItemForm
           columns={columns}
           data={data[editIndex!]}
-          onSubmit={handleEditSubmit}
+          onSubmit={onSubmit}
+          action={action}
           onClose={() => {
             setEditIndex(null);
             setEditItem(null);
